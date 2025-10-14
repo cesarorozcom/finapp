@@ -1,0 +1,35 @@
+{% extends 'transactions/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{ title }} - Budget Tracker{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-md-10">
+            <div class="card card-hover">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-pencil-square"></i> {{ title }}
+                    </h4>
+                </div>
+                <div class="card-body">
+                    {% crispy form %}
+                </div>
+            </div>
+
+            <!-- Help Section -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-info-circle"></i> Help</h6>
+                    <ul class="mb-0 small">
+                        <li><strong>Amount:</strong> Use positive values for expenses, negative values for income</li>
+                        <li><strong>Category:</strong> If not selected, the system will auto-categorize based on description</li>
+                        <li><strong>Description:</strong> Be descriptive to help with automatic categorization</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

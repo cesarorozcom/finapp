@@ -1,0 +1,35 @@
+{% extends 'transactions/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}{{ title }} - Budget Tracker{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-6 col-md-8">
+            <div class="card card-hover">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-tag"></i> {{ title }}
+                    </h4>
+                </div>
+                <div class="card-body">
+                    {% crispy form %}
+                </div>
+            </div>
+
+            <!-- Help Section -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-info-circle"></i> Category Tips</h6>
+                    <ul class="mb-0 small">
+                        <li><strong>Descriptive names:</strong> Use clear, specific category names</li>
+                        <li><strong>Consistency:</strong> Keep naming consistent for better organization</li>
+                        <li><strong>Examples:</strong> Food, Transportation, Entertainment, Utilities</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

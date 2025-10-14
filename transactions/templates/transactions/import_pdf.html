@@ -1,0 +1,67 @@
+{% extends 'transactions/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Import PDF - Budget Tracker{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-md-10">
+            <div class="card card-hover">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-file-earmark-pdf"></i> Import Transactions from PDF
+                    </h4>
+                </div>
+                <div class="card-body">
+                    {% crispy form %}
+                </div>
+            </div>
+
+            <!-- PDF Format Help -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-question-circle"></i> PDF Processing</h6>
+                </div>
+                <div class="card-body">
+                    <p>The system will automatically extract transaction data from your PDF using intelligent text parsing. It can handle various formats including:</p>
+
+                    <ul>
+                        <li><strong>Bank statements</strong> with transaction listings</li>
+                        <li><strong>Credit card statements</strong></li>
+                        <li><strong>Financial reports</strong> with transaction data</li>
+                    </ul>
+
+                    <h6>Supported formats:</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Dates:</strong>
+                            <ul class="small">
+                                <li>2023-01-15</li>
+                                <li>01/15/2023</li>
+                                <li>15-Jan-2023</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Amounts:</strong>
+                            <ul class="small">
+                                <li>$45.67</li>
+                                <li>-25.50</li>
+                                <li>123.45$</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> The system automatically categorizes transactions based on keywords in descriptions. You can review and adjust categories after import.
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <strong>Tip:</strong> For best results, ensure your PDF contains clear, machine-readable text. Scanned documents may require OCR processing (available in the full version).
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

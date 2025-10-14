@@ -1,0 +1,49 @@
+{% extends 'transactions/base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Import CSV - Budget Tracker{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-md-10">
+            <div class="card card-hover">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-file-earmark-spreadsheet"></i> Import Transactions from CSV
+                    </h4>
+                </div>
+                <div class="card-body">
+                    {% crispy form %}
+                </div>
+            </div>
+
+            <!-- CSV Format Help -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-question-circle"></i> CSV Format Guidelines</h6>
+                </div>
+                <div class="card-body">
+                    <p>Your CSV file should contain columns for transaction data. The system will automatically map columns based on the names you specify above.</p>
+
+                    <h6>Example CSV format:</h6>
+                    <pre class="bg-light p-3 rounded"><code>date,description,amount,category
+2023-01-15,Grocery Store,45.67,Food
+2023-01-16,Restaurant,-25.50,Dining
+2023-01-17,Gas Station,35.00,Transport</code></pre>
+
+                    <div class="alert alert-info">
+                        <strong>Tips:</strong>
+                        <ul class="mb-0">
+                            <li>Use positive amounts for expenses, negative for income</li>
+                            <li>Category column is optional - leave empty for auto-categorization</li>
+                            <li>Date format should be YYYY-MM-DD</li>
+                            <li>Make sure your CSV has headers matching the column names above</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
