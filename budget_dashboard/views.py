@@ -13,16 +13,22 @@ from transactions.models import Transaction, Category
 def dashboard(request):
     user = request.user
 
-    # Get current month data
+    # Get selected month/year from request parameters, default to current month
     now = datetime.now()
-    current_month = now.month
-    current_year = now.year
+    selected_month = int(request.GET.get('month', now.month))
+    selected_year = int(request.GET.get('year', now.year))
 
-    # Monthly summary
+    # Validate month and year ranges
+    if not (1 <= selected_month <= 12):
+        selected_month = now.month
+    if not (2000 <= selected_year <= now.year + 1):  # Allow future year for planning
+        selected_year = now.year
+
+    # Monthly summary for selected period
     monthly_transactions = Transaction.objects.filter(
         user=user,
-        date__year=current_year,
-        date__month=current_month
+        date__year=selected_year,
+        date__month=selected_month
     )
 
     total_income = monthly_transactions.filter(amount__lt=0).aggregate(Sum('amount'))['amount__sum'] or 0
@@ -34,9 +40,12 @@ def dashboard(request):
         count=Count('id')
     ).order_by('-total')
 
-    # Monthly trends for last 12 months
-    end_date = now.date()
-    start_date = end_date - timedelta(days=365)
+    # Monthly trends for last 12 months centered around selected period
+    selected_date = datetime(selected_year, selected_month, 1)
+    # Show 6 months before and 5 months after selected month for 12-month view
+    start_date = (selected_date - timedelta(days=180)).replace(day=1)
+    end_date = (selected_date + timedelta(days=150)).replace(day=1) + timedelta(days=32)
+    end_date = end_date.replace(day=1) - timedelta(days=1)  # Last day of the month
 
     monthly_trends = Transaction.objects.filter(
         user=user,
@@ -48,12 +57,28 @@ def dashboard(request):
         expenses=Sum('amount', filter=Q(amount__gt=0))
     ).order_by('month')
 
+    # Create month/year options for dropdowns
+    months = [
+        {'value': i, 'name': datetime(2000, i, 1).strftime('%B'), 'selected': i == selected_month}
+        for i in range(1, 13)
+    ]
+    years = [
+        {'value': y, 'selected': y == selected_year}
+        for y in range(now.year - 2, now.year + 2)  # Last 2 years + current + next year
+    ]
+
     # Create visualizations
     context = {
         'total_income': abs(total_income),
         'total_expenses': total_expenses,
         'net_amount': abs(total_income) - total_expenses,
         'category_expenses': list(category_expenses),
+        'selected_month': selected_month,
+        'selected_year': selected_year,
+        'months': months,
+        'years': years,
+        'current_month': now.month,
+        'current_year': now.year,
     }
 
     # Pie chart for category expenses

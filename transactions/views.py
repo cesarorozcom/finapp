@@ -35,94 +35,129 @@ class TransactionViewSet(viewsets.ModelViewSet):
             return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            import pdfplumber
-            import re
+            import tabula
+            import pandas as pd
             from datetime import datetime
 
             transactions = []
 
-            with pdfplumber.open(file) as pdf:
-                for page in pdf.pages:
-                    text = page.extract_text()
-                    if text:
-                        # Parse transactions from PDF text
-                        # This is a flexible parser that can be adapted to different PDF formats
-                        lines = text.split('\n')
-                        for line in lines:
-                            # Look for patterns like: Date Description Amount
-                            # Example patterns to match:
-                            # "2023-01-15 Grocery Store $45.67"
-                            # "01/15/2023 RESTAURANT -25.50"
-                            # "15-Jan-2023 Online Purchase 123.45"
+            # Extract tables from PDF using tabula
+            # For Colombian bank statements, try different table extraction options
+            try:
+                dfs = tabula.read_pdf(file, pages='all', multiple_tables=True, lattice=True)
+                if not dfs:
+                    dfs = tabula.read_pdf(file, pages='all', multiple_tables=True, stream=True)
+            except:
+                dfs = tabula.read_pdf(file, pages='all', multiple_tables=True)
 
-                            # Try different date formats and amount patterns
-                            date_patterns = [
-                                r'(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD
-                                r'(\d{2}/\d{2}/\d{4})',  # MM/DD/YYYY
-                                r'(\d{2}-\w{3}-\d{4})',  # DD-MMM-YYYY
-                            ]
+            for df in dfs:
+                if df.empty or len(df) < 2:
+                    continue
 
-                            amount_patterns = [
-                                r'\$?(-?\d+\.?\d{0,2})',  # $45.67 or -25.50
-                                r'(-?\d+\.?\d{0,2})\s*\$?',  # 45.67$ or -25.50
-                            ]
+                # Clean column names
+                df.columns = df.columns.str.strip().str.lower()
 
-                            for date_pattern in date_patterns:
-                                date_match = re.search(date_pattern, line)
-                                if date_match:
-                                    date_str = date_match.group(1)
-                                    # Convert to standard format
+                # For Colombian bank statements, the structure is often:
+                # Column 0: Date (DD-MM-YYYY)
+                # Column 1: Description
+                # Column 2: Amount
+                # Column 3: Balance (optional)
+
+                # Process each row
+                for _, row in df.iterrows():
+                    try:
+                        # Extract date from first column or look for date pattern
+                        date_str = str(row.iloc[0]).strip() if len(row) > 0 else ""
+
+                        # If first column doesn't look like a date, search all columns
+                        if not re.match(r'\d{2}-\d{2}-\d{4}', date_str):
+                            for col_val in row.values:
+                                col_str = str(col_val).strip()
+                                if re.match(r'\d{2}-\d{2}-\d{4}', col_str):
+                                    date_str = col_str
+                                    break
+
+                        if not date_str or not re.match(r'\d{2}-\d{2}-\d{4}', date_str):
+                            continue
+
+                        # Parse date (DD-MM-YYYY format for Colombian statements)
+                        try:
+                            parsed_date = datetime.strptime(date_str, '%d-%m-%Y').date()
+                        except ValueError:
+                            continue
+
+                        # Extract description and amount
+                        description = ""
+                        amount = None
+
+                        # Look through remaining columns for description and amount
+                        for i, col_val in enumerate(row.values[1:], 1):  # Skip first column (date)
+                            col_str = str(col_val).strip()
+
+                            if not col_str or col_str == 'nan':
+                                continue
+
+                            # Check if this looks like an amount (contains numbers and currency symbols)
+                            amount_match = re.search(r'[\d,]+\.?\d*', col_str.replace('$', '').replace('.', ''))
+                            if amount_match and len(col_str) < 20:  # Amount columns are usually short
+                                # Clean amount
+                                clean_amount = col_str.replace('$', '').replace(',', '').strip()
+                                try:
+                                    amount = float(clean_amount)
+                                    break  # Found amount, stop looking
+                                except ValueError:
+                                    pass
+                            else:
+                                # This might be description
+                                if len(col_str) > 3 and not col_str.replace(',', '').replace('.', '').replace('$', '').strip().isdigit():
+                                    description = col_str
+
+                        # If we still don't have amount, look for it in the entire row
+                        if amount is None:
+                            for col_val in row.values:
+                                col_str = str(col_val).strip()
+                                # Look for patterns like "23,709.00" or "$23,709.00"
+                                if re.search(r'[\d,]+\.\d{2}', col_str):
+                                    clean_amount = col_str.replace('$', '').replace(',', '').strip()
                                     try:
-                                        if '-' in date_str and len(date_str.split('-')[0]) == 4:
-                                            parsed_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                                        elif '/' in date_str:
-                                            parsed_date = datetime.strptime(date_str, '%m/%d/%Y').date()
-                                        elif '-' in date_str and len(date_str.split('-')[2]) == 4:
-                                            parsed_date = datetime.strptime(date_str, '%d-%b-%Y').date()
-                                        else:
-                                            continue
-
-                                        # Extract description and amount
-                                        # Remove the date from the line
-                                        remaining = re.sub(date_pattern, '', line).strip()
-
-                                        # Find amount
-                                        amount = None
-                                        for amount_pattern in amount_patterns:
-                                            amount_match = re.search(amount_pattern, remaining)
-                                            if amount_match:
-                                                amount_str = amount_match.group(1)
-                                                try:
-                                                    amount = float(amount_str)
-                                                    # Remove amount from remaining text
-                                                    remaining = re.sub(amount_pattern, '', remaining).strip()
-                                                    break
-                                                except ValueError:
-                                                    continue
-
-                                        if amount is not None:
-                                            description = remaining.strip()
-                                            if description:
-                                                transaction_data = {
-                                                    'date': parsed_date,
-                                                    'description': description,
-                                                    'amount': amount,
-                                                    'user': request.user
-                                                }
-
-                                                # Auto-categorize
-                                                transaction_data['category'] = self._auto_categorize(description)
-
-                                                transactions.append(Transaction(**transaction_data))
+                                        amount = float(clean_amount)
+                                        break
                                     except ValueError:
                                         continue
-                                    break
+
+                        if amount is None or amount == 0:
+                            continue
+
+                        # If no description found, create one
+                        if not description:
+                            description = f"Transaction {parsed_date}"
+
+                        # For Colombian bank statements, amounts are typically expenses (negative)
+                        # unless they contain keywords indicating income
+                        if amount > 0 and not any(word in description.lower() for word in ['abono', 'deposito', 'transferencia recibida', 'intereses']):
+                            amount = -amount  # Convert to negative for expenses
+
+                        transaction_data = {
+                            'date': parsed_date,
+                            'description': description,
+                            'amount': amount,
+                            'user': request.user
+                        }
+
+                        # Auto-categorize
+                        transaction_data['category'] = self._auto_categorize(description)
+
+                        transactions.append(Transaction(**transaction_data))
+
+                    except Exception as e:
+                        # Skip problematic rows but continue processing
+                        continue
 
             Transaction.objects.bulk_create(transactions)
             return Response({'message': f'Imported {len(transactions)} transactions from PDF'}, status=status.HTTP_201_CREATED)
 
-        except ImportError:
-            return Response({'error': 'PDF processing libraries not installed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except ImportError as e:
+            return Response({'error': f'PDF processing libraries not available. Please install tabula-py: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             return Response({'error': f'PDF processing failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -357,22 +392,81 @@ def import_csv_view(request):
         form = CSVImportForm(request.POST, request.FILES)
         if form.is_valid():
             file = form.cleaned_data['file']
+            # Apply date format to YYYY-MM-DD if needed based on user input
             date_col = form.cleaned_data['date_column']
+
+            #date_col = form.cleaned_data['date_column']
             desc_col = form.cleaned_data['description_column']
-            amount_col = form.cleaned_data['amount_column']
+            # remove commas from amount column name if any and trailing zeros
+            amount_col = form.cleaned_data['amount_column'].replace(',', '').rstrip('0').rstrip('.')
             category_col = form.cleaned_data.get('category_column')
 
             try:
                 df = pd.read_csv(io.StringIO(file.read().decode('utf-8')))
                 transactions = []
+                skipped_duplicates = 0
+
+                # Get existing transactions for duplicate checking
+                existing_transactions = set(
+                    Transaction.objects.filter(user=request.user).values_list(
+                        'date', 'description', 'amount'
+                    )
+                )
 
                 for _, row in df.iterrows():
-                    transaction_data = {
-                        'date': row[date_col],
-                        'description': row[desc_col],
-                        'amount': float(row[amount_col]),
-                        'user': request.user
-                    }
+                    try:
+                        # Validate and sanitize inputs
+                        raw_description = str(row.get(desc_col, '')).strip()
+                        if not raw_description:
+                            continue  # Skip rows with empty descriptions
+
+                        raw_amount = str(row.get(amount_col, '')).strip()
+                        if not raw_amount:
+                            continue  # Skip rows with empty amounts
+
+                        # Clean and parse amount (handle currency symbols and commas)
+                        clean_amount = raw_amount.replace('$', '').replace(',', '').strip()
+                        try:
+                            amount = float(clean_amount)
+                        except ValueError:
+                            continue  # Skip invalid amounts
+
+                        # Validate amount is not zero (optional, depending on business logic)
+                        if amount == 0:
+                            continue
+
+                        # Parse date
+                        raw_date = str(row.get(date_col, '')).strip()
+                        if not raw_date:
+                            continue  # Skip rows with empty dates
+
+                        # Convert date format if needed (DD-MM-YYYY to YYYY-MM-DD)
+                        formatted_date = convert_dd_mm_yyyy_to_yyyy_mm_dd(raw_date)
+                        try:
+                            parsed_date = datetime.strptime(formatted_date, '%Y-%m-%d').date()
+                        except ValueError:
+                            continue  # Skip invalid dates
+
+                        # Check for duplicates
+                        transaction_tuple = (parsed_date, raw_description, amount)
+                        if transaction_tuple in existing_transactions:
+                            skipped_duplicates += 1
+                            continue  # Skip duplicate transactions
+
+                        transaction_data = {
+                            'date': parsed_date,
+                            'description': raw_description,
+                            'amount': amount,
+                            'user': request.user
+                        }
+                    except KeyError as e:
+                        # Handle missing columns gracefully
+                        messages.warning(request, f'Skipping row due to missing column: {e}')
+                        continue
+                    except Exception as e:
+                        # Log and skip problematic rows
+                        messages.warning(request, f'Skipping row due to error: {str(e)}')
+                        continue
 
                     if category_col and category_col in row:
                         category, _ = Category.objects.get_or_create(name=str(row[category_col]))
@@ -383,8 +477,16 @@ def import_csv_view(request):
 
                     transactions.append(Transaction(**transaction_data))
 
-                Transaction.objects.bulk_create(transactions)
-                messages.success(request, f'Successfully imported {len(transactions)} transactions!')
+                # Bulk create new transactions
+                if transactions:
+                    Transaction.objects.bulk_create(transactions)
+
+                # Provide feedback on import results
+                success_message = f'Successfully imported {len(transactions)} transactions!'
+                if skipped_duplicates > 0:
+                    success_message += f' Skipped {skipped_duplicates} duplicate transactions.'
+                messages.success(request, success_message)
+
                 return redirect('dashboard')
 
             except Exception as e:
@@ -406,78 +508,108 @@ def import_pdf_view(request):
             file = form.cleaned_data['file']
 
             try:
-                import pdfplumber
-                import re
+                import tabula
+                import pandas as pd
                 from datetime import datetime
 
                 transactions = []
 
-                with pdfplumber.open(file) as pdf:
-                    for page in pdf.pages:
-                        text = page.extract_text()
-                        if text:
-                            lines = text.split('\n')
-                            for line in lines:
-                                date_patterns = [
-                                    r'(\d{4}-\d{2}-\d{2})',
-                                    r'(\d{2}/\d{2}/\d{4})',
-                                    r'(\d{2}-\w{3}-\d{4})',
-                                ]
+                # Extract tables from PDF using tabula
+                dfs = tabula.read_pdf(file, pages='all', multiple_tables=True)
 
-                                amount_patterns = [
-                                    r'\$?(-?\d+\.?\d{0,2})',
-                                    r'(-?\d+\.?\d{0,2})\s*\$?',
-                                ]
+                for df in dfs:
+                    if df.empty:
+                        continue
 
-                                for date_pattern in date_patterns:
-                                    date_match = re.search(date_pattern, line)
-                                    if date_match:
-                                        date_str = date_match.group(1)
-                                        try:
-                                            if '-' in date_str and len(date_str.split('-')[0]) == 4:
-                                                parsed_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                                            elif '/' in date_str:
-                                                parsed_date = datetime.strptime(date_str, '%m/%d/%Y').date()
-                                            elif '-' in date_str and len(date_str.split('-')[2]) == 4:
-                                                parsed_date = datetime.strptime(date_str, '%d-%b-%Y').date()
-                                            else:
-                                                continue
+                    # Clean column names
+                    df.columns = df.columns.str.strip().str.lower()
 
-                                            remaining = re.sub(date_pattern, '', line).strip()
+                    # Try to identify columns (flexible mapping)
+                    column_mapping = {}
 
-                                            amount = None
-                                            for amount_pattern in amount_patterns:
-                                                amount_match = re.search(amount_pattern, remaining)
-                                                if amount_match:
-                                                    amount_str = amount_match.group(1)
-                                                    try:
-                                                        amount = float(amount_str)
-                                                        remaining = re.sub(amount_pattern, '', remaining).strip()
-                                                        break
-                                                    except ValueError:
-                                                        continue
+                    # Look for date column
+                    date_cols = [col for col in df.columns if any(keyword in col.lower() for keyword in ['date', 'fecha', 'fecha_transaccion'])]
+                    if date_cols:
+                        column_mapping['date'] = date_cols[0]
 
-                                            if amount is not None:
-                                                description = remaining.strip()
-                                                if description:
-                                                    transaction_data = {
-                                                        'date': parsed_date,
-                                                        'description': description,
-                                                        'amount': amount,
-                                                        'user': request.user,
-                                                        'category': auto_categorize(description)
-                                                    }
-                                                    transactions.append(Transaction(**transaction_data))
-                                        except ValueError:
-                                            continue
-                                        break
+                    # Look for description column
+                    desc_cols = [col for col in df.columns if any(keyword in col.lower() for keyword in ['description', 'desc', 'descripcion', 'concepto', 'detalle'])]
+                    if desc_cols:
+                        column_mapping['description'] = desc_cols[0]
+
+                    # Look for amount column
+                    amount_cols = [col for col in df.columns if any(keyword in col.lower() for keyword in ['amount', 'monto', 'valor', 'importe', 'total'])]
+                    if amount_cols:
+                        column_mapping['amount'] = amount_cols[0]
+
+                    # Look for category column (optional)
+                    category_cols = [col for col in df.columns if any(keyword in col.lower() for keyword in ['category', 'categoria', 'tipo', 'clasificacion'])]
+                    if category_cols:
+                        column_mapping['category'] = category_cols[0]
+
+                    # Process each row
+                    for _, row in df.iterrows():
+                        try:
+                            # Parse date
+                            date_str = str(row[column_mapping.get('date', df.columns[0])]).strip()
+                            parsed_date = None
+
+                            # Try different date formats
+                            date_formats = ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d']
+                            for fmt in date_formats:
+                                try:
+                                    parsed_date = datetime.strptime(date_str, fmt).date()
+                                    break
+                                except ValueError:
+                                    continue
+
+                            if parsed_date is None:
+                                continue  # Skip rows without valid dates
+
+                            # Parse amount
+                            amount_str = str(row[column_mapping.get('amount', df.columns[-1])]).strip()
+                            # Remove currency symbols and clean
+                            amount_str = amount_str.replace('$', '').replace(',', '').strip()
+                            try:
+                                amount = float(amount_str)
+                            except ValueError:
+                                continue  # Skip rows without valid amounts
+
+                            # Get description
+                            description = str(row[column_mapping.get('description', df.columns[1] if len(df.columns) > 1 else df.columns[0])]).strip()
+                            if not description:
+                                continue
+
+                            transaction_data = {
+                                'date': parsed_date,
+                                'description': description,
+                                'amount': amount,
+                                'user': request.user
+                            }
+
+                            # Handle category if available
+                            if 'category' in column_mapping and column_mapping['category'] in row:
+                                category_name = str(row[column_mapping['category']]).strip()
+                                if category_name:
+                                    category, _ = Category.objects.get_or_create(name=category_name)
+                                    transaction_data['category'] = category
+
+                            # Auto-categorize if no category provided
+                            if 'category' not in transaction_data:
+                                transaction_data['category'] = auto_categorize(description)
+
+                            transactions.append(Transaction(**transaction_data))
+
+                        except Exception as e:
+                            # Skip problematic rows but continue processing
+                            continue
 
                 Transaction.objects.bulk_create(transactions)
                 messages.success(request, f'Successfully imported {len(transactions)} transactions from PDF!')
                 return redirect('dashboard')
 
-            except ImportError:
-                messages.error(request, 'PDF processing libraries not available')
+            except ImportError as e:
+                messages.error(request, f'PDF processing libraries not available. Please install tabula-py: {str(e)}')
             except Exception as e:
                 messages.error(request, f'PDF processing failed: {str(e)}')
     else:
@@ -487,6 +619,25 @@ def import_pdf_view(request):
         'form': form,
         'title': 'Import PDF'
     })
+
+def convert_dd_mm_yyyy_to_yyyy_mm_dd(date_str):
+    """
+    Convert a date string from DD-MM-YYYY format to YYYY-MM-DD format.
+
+    Args:
+        date_str (str): Date string in DD-MM-YYYY format
+
+    Returns:
+        str: Date string in YYYY-MM-DD format, or original string if conversion fails
+    """
+    try:
+        # Parse the date from DD-MM-YYYY format
+        date_obj = datetime.strptime(date_str.strip(), '%d-%m-%Y')
+        # Convert to YYYY-MM-DD format
+        return date_obj.strftime('%Y-%m-%d')
+    except ValueError:
+        # Return original string if parsing fails
+        return date_str
 
 def auto_categorize(description):
     """Auto-categorize transaction based on description"""

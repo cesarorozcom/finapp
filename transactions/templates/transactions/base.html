@@ -1,9 +1,10 @@
+{% load i18n %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Budget Tracker{% endblock %}</title>
+    <title>{% block title %}{% translate "Budget Tracker" %}{% endblock %}</title>
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -37,14 +38,17 @@
         }
     </style>
 
-    {% block extra_head %}{% endblock %}
+    {% block extra_head %}
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    {% endblock %}
 </head>
 <body>
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
             <a class="navbar-brand" href="{% url 'dashboard' %}">
-                <i class="bi bi-wallet2"></i> Budget Tracker
+                <i class="bi bi-wallet2"></i> {% translate "Budget Tracker" %}
             </a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -55,29 +59,29 @@
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'dashboard' %}">
-                            <i class="bi bi-house-door"></i> Dashboard
+                            <i class="bi bi-house-door"></i> {% translate "Dashboard" %}
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'transaction_list' %}">
-                            <i class="bi bi-receipt"></i> Transactions
+                            <i class="bi bi-receipt"></i> {% translate "Transactions" %}
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'category_list' %}">
-                            <i class="bi bi-tags"></i> Categories
+                            <i class="bi bi-tags"></i> {% translate "Categories" %}
                         </a>
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-upload"></i> Import
+                            <i class="bi bi-upload"></i> {% translate "Import" %}
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{% url 'import_csv' %}">
-                                <i class="bi bi-file-earmark-spreadsheet"></i> Import CSV
+                                <i class="bi bi-file-earmark-spreadsheet"></i> {% translate "Import CSV" %}
                             </a></li>
                             <li><a class="dropdown-item" href="{% url 'import_pdf' %}">
-                                <i class="bi bi-file-earmark-pdf"></i> Import PDF
+                                <i class="bi bi-file-earmark-pdf"></i> {% translate "Import PDF" %}
                             </a></li>
                         </ul>
                     </li>
