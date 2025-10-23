@@ -16,6 +16,7 @@ djangorestframework
 fastapi
 fonttools
 greenlet
+gunicorn
 h11
 idna
 jpype1
