@@ -27,6 +27,7 @@ numpy
 packaging
 pandas
 pdfminer-six
+psycopg2-binary
 pillow
 pip
 plotly
